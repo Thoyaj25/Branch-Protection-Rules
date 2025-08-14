@@ -1,0 +1,89 @@
+# Implement Branch Protection Rules for Private Repos in a GitHub Organization
+
+Below is a step-by-step, from-scratch guide to design, apply, and enforce branch protection for one or more private repositories in an organization, including optional org-wide controls, CODEOWNERS reviews, required checks, and merge queue.
+
+Note: Requires organization owner or admin permissions, or a custom role with permissions to edit repository rules. Protected branches are supported for private repos on GitHub Team/Enterprise.[1][2]
+
+## 1) Plan your rules and scope
+
+Decide:
+- Target branches or patterns: e.g., main, release/*, hotfix/* using fnmatch patterns like main, release/*, or *release*.[2]
+- Requirements: PR reviews, status checks, linear history, signed commits, conversation resolution, deployments before merge, merge queue, etc.[2]
+- Who can push: restrict push to specific users/teams/apps if needed.[2]
+- Whether admins can bypass: typically disable bypass to enforce uniformly.[2]
+- Whether to enable a merge queue for busy branches.[3][4][2]
+
+Tip: Only one branch protection rule applies at a time per branch; if you need layered logic consider rulesets for advanced org-wide governance.[5][6][2]
+
+## 2) Create a CODEOWNERS file (optional but recommended)
+
+- Add CODEOWNERS at .github/CODEOWNERS, /CODEOWNERS, or /docs/CODEOWNERS to auto-request reviewers for matching paths.[7][8]
+- Enable “Require review from Code Owners” in branch protection to enforce it.[8]
+- Example rule in CODEOWNERS: 
+  - * @org/team-frontend  
+  - /infra/ @org/team-infra  
+This will automatically request and, if enforced, require code owner approval for matching changes.[7][8]
+
+## 3) Configure branch protection on a single repository
+
+For each repo:
+
+1. Navigate to the repository → Settings → Branches.[1]
+2. Under Branch protection rules, click Add rule.[1]
+3. Branch name pattern: enter branch or pattern (e.g., main or release/*).[1][2]
+4. Enable settings as needed (common production defaults):
+   - Require pull request reviews before merging; set min approvals (e.g., ≥1) and toggle “Require review from Code Owners” if using CODEOWNERS.[8][2]
+   - Require status checks before merging; select the required checks (ensure job names are unique across workflows).[2]
+   - Require conversation resolution before merging.[2]
+   - Require signed commits.[2]
+   - Require linear history (forces squash/rebase merges).[2]
+   - Require merge queue (recommended for high-traffic branches).[4][3][2]
+   - Require deployments to succeed before merging (e.g., staging env).[2]
+   - Restrict who can push to matching branches (limit to specific users/teams/apps).[2]
+   - Do not allow bypassing the above settings (apply to admins as well).[2]
+   - Allow or disallow force pushes/deletions as policy dictates (default is disabled).[2]
+5. Save changes.[1]
+
+Notes:
+- “Require branches to be up to date” is effectively handled by merge queue, which validates PRs against the latest base branch without manual rebases.[3][4][2]
+- If using required status checks, add the exact check names that must pass before merge.[2]
+
+## 4) Set up and require merge queue (optional but recommended for busy repos)
+
+- In the branch protection rule, enable “Require merge queue”.[3][2]
+- Ensure CI runs on merge_group events if using GitHub Actions, so required checks can run for the queue’s temporary branches.[9][3]
+- Add the merge-queue CI workflow’s status check to the branch’s required status checks list.[9]
+- Developers click “Merge when ready” to add PRs to the queue; GitHub batches/validates and merges when required checks pass.[4][3]
+
+## 5) Configure required status checks (CI)
+
+- Ensure your CI (e.g., GitHub Actions) produces clearly named jobs; avoid duplicate job names across workflows to prevent ambiguous results that block merges.[2]
+- In Branch protection → Required status checks, select the checks that must pass (e.g., build, test, security scan).[2]
+- If using merge queue, ensure the checks run on merge_group and are set as required.[9][3]
+
+## 6) Enforce across many repos (organization scale)
+
+Options:
+- Rulesets (org-level): Create org rulesets to standardize protection across repositories/branches/tags with fine-grained conditions and enforcement.[6][5]
+- Automation via GitHub Action: Use marketplace actions like “Set-Branch-Protection” to apply a JSON-defined set of rules across repos; requires an admin/owner token and an include/exclude repo list if needed.[10]
+
+Rulesets are preferable for consistent governance because only one branch protection rule applies per branch and rulesets provide centralized control.[5][6][2]
+
+## 7) Additional org hygiene
+
+- Limit who has write/admin; branch protection is strongest when fewer users can push directly.[2]
+- Manage team review settings to ensure teams are requested correctly with CODEOWNERS, and branch rules requiring code owner reviews keep team membership effective.[11][8]
+- Manage Actions policies (allowlisted actions, required approvals for reusable workflows) for supply-chain safety.[12]
+
+## 8) Operational workflow
+
+- Developers open PRs to protected branches.  
+- Required reviews, code owner approvals, status checks, deployments, and conversation resolution must complete.  
+- If merge queue is required, use “Merge when ready” to enter the queue; GitHub validates and merges in order.[4][3][2]
+
+## 9) Troubleshooting
+
+- Push denied: Protected branch disallows direct push; use PR, or adjust “Restrict who can push”/bypass policy.[2]
+- Checks not appearing: Ensure CI publishes status with unique job names and exact names are selected in required checks.[2]
+- Merge queue not triggering CI: Ensure workflows listen to merge_group events and required checks reference those runs.[3][9]
+- Code owners not requested: Ensure CODEOWNERS file path is correct and rule patterns match changed files; enable “Require review from Code Owners” if enforcement is desired.[8]
